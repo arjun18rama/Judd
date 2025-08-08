@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Sith Empire vs Unity Chess</title>
+<style>
+ body{font-family:Arial,sans-serif;text-align:center;background:#111;color:#eee;}
+ #board{border:2px solid #555;display:block;margin:20px auto;background:#000;}
+ #info{margin-top:10px;}
+ #captured{display:flex;justify-content:space-around;margin-top:10px;}
+ .captured-list{width:45%;min-height:40px;border:1px solid #555;padding:5px;text-align:left;}
+ button{margin-top:10px;padding:8px 16px;font-size:16px;}
+</style>
+</head>
+<body>
+<h1>Sith Empire vs Unity Chess</h1>
+<canvas id="board" width="480" height="480"></canvas>
+<div id="info">Turn: <span id="turn">Sith Empire</span></div>
+<div id="captured">
+ <div class="captured-list"><strong>Sith Empire Captured:</strong> <span id="capturedBlack"></span></div>
+ <div class="captured-list"><strong>Unity Captured:</strong> <span id="capturedWhite"></span></div>
+</div>
+<button id="reset">Reset Game</button>
+<script>
+const canvas=document.getElementById('board');
+const ctx=canvas.getContext('2d');
+const TILE=60;
+const boardSize=8;
+let board,turn="black",selected=null,validMoves=[],enPassant=null,history=[],capturedWhite=[],capturedBlack=[],gameOver=false;
+const pieceNames={
+ black:{king:"SITH-1",queen:"ZEC0",rook:"Jim",knight:"Biden",bishop:"Mr. Ehor",pawn:"Phantom Vulture"},
+ white:{king:"Hera\u2019s Son",queen:"Hera Syndulla",rook:"Ezra Bridger",knight:"Sabine Wren",bishop:"Kanan Jarrus",pawn:"Unity Trooper"}
+};
+const pieceValues={king:1000,queen:9,rook:5,bishop:3,knight:3,pawn:1};
+function init(){
+ board=[];history=[];capturedWhite=[];capturedBlack=[];gameOver=false;turn="black";selected=null;enPassant=null;document.getElementById('turn').textContent='Sith Empire';
+ for(let y=0;y<8;y++){board[y]=new Array(8).fill(null);} 
+ const order=['rook','knight','bishop','queen','king','bishop','knight','rook'];
+ for(let i=0;i<8;i++){board[0][i]={color:'white',type:order[i],name:pieceNames.white[order[i]],moved:false};board[1][i]={color:'white',type:'pawn',name:pieceNames.white.pawn,moved:false};board[6][i]={color:'black',type:'pawn',name:pieceNames.black.pawn,moved:false};board[7][i]={color:'black',type:order[i],name:pieceNames.black[order[i]],moved:false};}
+ draw();
+}
+function draw(){ctx.clearRect(0,0,480,480);for(let y=0;y<8;y++){for(let x=0;x<8;x++){ctx.fillStyle=(x+y)%2?"#222":"#555";ctx.fillRect(x*TILE,y*TILE,TILE,TILE);if(selected&&selected.x===x&&selected.y===y){ctx.fillStyle="rgba(255,255,0,0.4)";ctx.fillRect(x*TILE,y*TILE,TILE,TILE);}if(validMoves.some(m=>m.x===x&&m.y===y)){ctx.fillStyle="rgba(0,255,0,0.3)";ctx.fillRect(x*TILE,y*TILE,TILE,TILE);}let p=board[y][x];if(p){ctx.fillStyle=p.color==='black'?"#f44":"#cff";drawText(p.name,x*TILE,y*TILE);}}}}
+function drawText(text,x,y){ctx.font="10px Arial";ctx.textAlign="center";ctx.textBaseline="middle";let words=text.split(' ');let lineHeight=10;let offset=y+TILE/2-(lineHeight*(words.length-1))/2;for(let i=0;i<words.length;i++){ctx.fillText(words[i],x+TILE/2,offset+i*lineHeight);}}
+canvas.addEventListener('click',e=>{if(gameOver||turn!=='black')return;const rect=canvas.getBoundingClientRect();const x=Math.floor((e.clientX-rect.left)/TILE);const y=Math.floor((e.clientY-rect.top)/TILE);const piece=board[y][x];if(selected){if(validMoves.some(m=>m.x===x&&m.y===y)){movePiece(selected.x,selected.y,x,y);selected=null;validMoves=[];draw();setTimeout(()=>{if(!gameOver){aiMove();}},300);}else{selected=null;validMoves=[];draw();}}else if(piece&&piece.color==='black'){selected={x,y};validMoves=getValidMoves(x,y);draw();}});
+document.getElementById('reset').onclick=()=>{init();};
+function movePiece(sx,sy,dx,dy,simulate=false){let piece=board[sy][sx];let target=board[dy][dx];let capture=target?target:null;if(piece.type==='pawn'&&dx===enPassant?.x&&dy===enPassant?.y){capture=board[sy][dx];board[sy][dx]=null;}board[dy][dx]=piece;board[sy][sx]=null;piece.moved=true;if(piece.type==='pawn'&&Math.abs(dy-sy)===2)enPassant={x:dx,y:(dy+sy)/2,color:piece.color};else enPassant=null;if(piece.type==='king'&&Math.abs(dx-sx)===2){let rookX=dx>sx?7:0;let newRookX=dx>sx?dx-1:dx+1;board[dy][newRookX]=board[dy][rookX];board[dy][rookX]=null;board[dy][newRookX].moved=true;}if(piece.type==='pawn'&&(dy===0||dy===7)){board[dy][dx]={color:piece.color,type:'queen',name:pieceNames[piece.color].queen,moved:true};}
+if(capture&&!simulate){if(capture.color==='black')capturedBlack.push(capture.name);else capturedWhite.push(capture.name);updateCaptured();}
+if(!simulate){history.push({sx,sy,dx,dy,piece,target,capture,enPassant});turn=turn==='black'?'white':'black';document.getElementById('turn').textContent=turn==='black'?'Sith Empire':'Unity';}
+return capture;}
+function undo(){let last=history.pop();if(!last)return;board[last.sy][last.sx]=last.piece;board[last.dy][last.dx]=last.target;turn=turn==='black'?'white':'black';}
+function getValidMoves(x,y){let moves=[];let piece=board[y][x];if(!piece)return moves;let dirs,dx,dy;switch(piece.type){case'pawn':let dir=piece.color==='black'?-1:1;let start=piece.color==='black'?6:1;if(!board[y+dir][x])moves.push({x:x,y:y+dir});if(y===start&&!board[y+dir][x]&&!board[y+2*dir][x])moves.push({x:x,y:y+2*dir});if(board[y+dir][x+1]&&board[y+dir][x+1].color!==piece.color)moves.push({x:x+1,y:y+dir});if(board[y+dir][x-1]&&board[y+dir][x-1].color!==piece.color)moves.push({x:x-1,y:y+dir});if(enPassant&&enPassant.y===y+dir&&Math.abs(enPassant.x-x)===1&&enPassant.color!==piece.color)moves.push({x:enPassant.x,y:enPassant.y});break;case'rook':dirs=[[1,0],[-1,0],[0,1],[0,-1]];moves.push(...slideMoves(x,y,piece.color,dirs));break;case'bishop':dirs=[[1,1],[-1,1],[1,-1],[-1,-1]];moves.push(...slideMoves(x,y,piece.color,dirs));break;case'queen':dirs=[[1,0],[-1,0],[0,1],[0,-1],[1,1],[-1,1],[1,-1],[-1,-1]];moves.push(...slideMoves(x,y,piece.color,dirs));break;case'knight':let ks=[[1,2],[2,1],[-1,2],[-2,1],[1,-2],[2,-1],[-1,-2],[-2,-1]];for(let k of ks){let nx=x+k[0],ny=y+k[1];if(onBoard(nx,ny)&&(!board[ny][nx]||board[ny][nx].color!==piece.color))moves.push({x:nx,y:ny});}break;case'king':let ks2=[[1,0],[-1,0],[0,1],[0,-1],[1,1],[-1,1],[1,-1],[-1,-1]];for(let k of ks2){let nx=x+k[0],ny=y+k[1];if(onBoard(nx,ny)&&(!board[ny][nx]||board[ny][nx].color!==piece.color))moves.push({x:nx,y:ny});}if(!piece.moved&&!isInCheck(piece.color)){if(canCastle(x,y,1))moves.push({x:x+2,y:y});if(canCastle(x,y,-1))moves.push({x:x-2,y:y});}break;}
+return moves.filter(m=>!wouldBeInCheck(x,y,m.x,m.y,piece.color));}
+function slideMoves(x,y,color,dirs){let arr=[];for(let [dx,dy] of dirs){let nx=x+dx,ny=y+dy;while(onBoard(nx,ny)){if(board[ny][nx]){if(board[ny][nx].color!==color)arr.push({x:nx,y:ny});break;}arr.push({x:nx,y:ny});nx+=dx;ny+=dy;}}return arr;}
+function onBoard(x,y){return x>=0&&x<8&&y>=0&&y<8;}
+function wouldBeInCheck(sx,sy,dx,dy,color){let piece=board[sy][sx];let target=board[dy][dx];board[dy][dx]=piece;board[sy][sx]=null;let king=findKing(color);let inCheck=isSquareAttacked(king.x,king.y,color);board[sy][sx]=piece;board[dy][dx]=target;return inCheck;}
+function findKing(color){for(let y=0;y<8;y++)for(let x=0;x<8;x++){let p=board[y][x];if(p&&p.color===color&&p.type==='king')return{x,y};}}
+function isSquareAttacked(x,y,color){let opp=color==='black'?'white':'black';for(let yy=0;yy<8;yy++)for(let xx=0;xx<8;xx++){let p=board[yy][xx];if(p&&p.color===opp){let moves=getRawMoves(xx,yy,false);if(moves.some(m=>m.x===x&&m.y===y))return true;}}return false;}
+function getRawMoves(x,y,filter=true){let piece=board[y][x];if(!piece)return[];let moves;switch(piece.type){case'pawn':moves=[];let dir=piece.color==='black'?-1:1;let start=piece.color==='black'?6:1;if(!board[y+dir][x])moves.push({x:x,y:y+dir});if(y===start&&!board[y+dir][x]&&!board[y+2*dir][x])moves.push({x:x,y:y+2*dir});if(board[y+dir][x+1]&&board[y+dir][x+1].color!==piece.color)moves.push({x:x+1,y:y+dir});if(board[y+dir][x-1]&&board[y+dir][x-1].color!==piece.color)moves.push({x:x-1,y:y+dir});if(enPassant&&enPassant.y===y+dir&&Math.abs(enPassant.x-x)===1&&enPassant.color!==piece.color)moves.push({x:enPassant.x,y:enPassant.y});break;case'rook':moves=slideMoves(x,y,piece.color,[[1,0],[-1,0],[0,1],[0,-1]]);break;case'bishop':moves=slideMoves(x,y,piece.color,[[1,1],[-1,1],[1,-1],[-1,-1]]);break;case'queen':moves=slideMoves(x,y,piece.color,[[1,0],[-1,0],[0,1],[0,-1],[1,1],[-1,1],[1,-1],[-1,-1]]);break;case'knight':moves=[];let ks=[[1,2],[2,1],[-1,2],[-2,1],[1,-2],[2,-1],[-1,-2],[-2,-1]];for(let k of ks){let nx=x+k[0],ny=y+k[1];if(onBoard(nx,ny)&&(!board[ny][nx]||board[ny][nx].color!==piece.color))moves.push({x:nx,y:ny});}break;case'king':moves=[];let ks2=[[1,0],[-1,0],[0,1],[0,-1],[1,1],[-1,1],[1,-1],[-1,-1]];for(let k of ks2){let nx=x+k[0],ny=y+k[1];if(onBoard(nx,ny)&&(!board[ny][nx]||board[ny][nx].color!==piece.color))moves.push({x:nx,y:ny});}if(!piece.moved&&!filter){if(canCastle(x,y,1))moves.push({x:x+2,y:y});if(canCastle(x,y,-1))moves.push({x:x-2,y:y});}break;}
+return filter?moves.filter(m=>!wouldBeInCheck(x,y,m.x,m.y,piece.color)):moves;}
+function canCastle(x,y,dir){let rookX=dir>0?7:0;let rook=board[y][rookX];if(!rook||rook.moved)return false;let between=dir>0?[5,6]:[1,2,3];for(let bx of between){if(board[y][bx])return false;}for(let i=0;i<=2;i++){let checkX=x+i*dir;if(isSquareAttacked(checkX,y,board[y][x].color))return false;}return true;}
+function aiMove(){if(gameOver||turn!=='white')return;let bestScore=-Infinity,bestMove=null;let moves=getAllMoves('white');for(let m of moves){let capture=movePiece(m.sx,m.sy,m.dx,m.dy,true);let score=-minimax('black',2,-Infinity,Infinity);undo();if(score>bestScore){bestScore=score;bestMove=m;}}if(bestMove){movePiece(bestMove.sx,bestMove.sy,bestMove.dx,bestMove.dy);draw();checkGameOver();}}
+function minimax(color,depth,alpha,beta){if(depth===0)return evaluate();let moves=getAllMoves(color);if(moves.length===0){if(isInCheck(color))return color==='white'?-999:999;return 0;}if(color==='white'){let maxEval=-Infinity;for(let m of moves){movePiece(m.sx,m.sy,m.dx,m.dy,true);let evalScore=minimax('black',depth-1,alpha,beta);undo();maxEval=Math.max(maxEval,evalScore);alpha=Math.max(alpha,evalScore);if(beta<=alpha)break;}return maxEval;}else{let minEval=Infinity;for(let m of moves){movePiece(m.sx,m.sy,m.dx,m.dy,true);let evalScore=minimax('white',depth-1,alpha,beta);undo();minEval=Math.min(minEval,evalScore);beta=Math.min(beta,evalScore);if(beta<=alpha)break;}return minEval;}}
+function evaluate(){let score=0;for(let y=0;y<8;y++)for(let x=0;x<8;x++){let p=board[y][x];if(p){let val=pieceValues[p.type];score+=p.color==='black'?val:-val;}}return score;}
+function getAllMoves(color){let moves=[];for(let y=0;y<8;y++)for(let x=0;x<8;x++){let p=board[y][x];if(p&&p.color===color){let ms=getValidMoves(x,y);for(let m of ms)moves.push({sx:x,sy:y,dx:m.x,dy:m.y});}}return moves;}
+function isInCheck(color){let king=findKing(color);return isSquareAttacked(king.x,king.y,color);}
+function checkGameOver(){let moves=getAllMoves(turn);if(moves.length===0){if(isInCheck(turn)){alert((turn==='black'?'Sith Empire':'Unity')+' is in checkmate. '+(turn==='black'?'Unity':'Sith Empire')+' wins!');}else{alert('Stalemate!');}gameOver=true;}}
+function updateCaptured(){document.getElementById('capturedBlack').textContent=capturedBlack.join(', ');document.getElementById('capturedWhite').textContent=capturedWhite.join(', ');}
+init();
+function beep(){try{const ctxAudio=new (window.AudioContext||window.webkitAudioContext)();let osc=ctxAudio.createOscillator();osc.type='sine';osc.frequency.value=440;osc.connect(ctxAudio.destination);osc.start();osc.stop(ctxAudio.currentTime+0.1);}catch(e){}
+}
+const originalMove=movePiece;movePiece=function(sx,sy,dx,dy,simulate=false){let capture=originalMove(sx,sy,dx,dy,simulate);if(!simulate)beep();return capture;};
+</script>
+</body>
+</html>
